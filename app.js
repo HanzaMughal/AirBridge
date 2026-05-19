@@ -49,6 +49,8 @@ let mediaRecorder = null;
 let recordedChunks = [];
 let recordingStartTime = null;
 let recordingTimerInterval = null;
+let activeRecordingBlobUrl = null;
+let activeRecordingFileName = "";
 
 // Audio Visualization
 let audioCtx = null;
@@ -136,7 +138,13 @@ const elements = {
   iconRecordActive: document.getElementById("icon-record-active"),
   iconRecordInactive: document.getElementById("icon-record-inactive"),
   recordingBadge: document.getElementById("recording-badge"),
-  recordingTimer: document.getElementById("recording-timer")
+  recordingTimer: document.getElementById("recording-timer"),
+  
+  // Recording Modal Overlays
+  recordingModal: document.getElementById("recording-modal"),
+  recordingModalInfo: document.getElementById("recording-modal-info"),
+  btnRecordingClose: document.getElementById("btn-recording-close"),
+  btnRecordingDownload: document.getElementById("btn-recording-download")
 };
 
 // --- INITIALIZATION ---
@@ -608,6 +616,33 @@ function initUIEvents() {
   elements.btnRecord.addEventListener("click", toggleRecording);
   elements.btnSessionDisconnect.addEventListener("click", () => {
     closeSession(true);
+  });
+  
+  // Recording download modal events
+  elements.btnRecordingClose.addEventListener("click", () => {
+    elements.recordingModal.classList.add("hidden");
+    if (activeRecordingBlobUrl) {
+      URL.revokeObjectURL(activeRecordingBlobUrl);
+      activeRecordingBlobUrl = null;
+    }
+  });
+  
+  elements.btnRecordingDownload.addEventListener("click", () => {
+    if (activeRecordingBlobUrl) {
+      const a = document.createElement("a");
+      a.style.display = "none";
+      a.href = activeRecordingBlobUrl;
+      a.download = activeRecordingFileName;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(activeRecordingBlobUrl);
+        activeRecordingBlobUrl = null;
+      }, 100);
+      showToast("Audio recording downloaded!", "success");
+    }
+    elements.recordingModal.classList.add("hidden");
   });
 }
 
@@ -1282,26 +1317,34 @@ function stopRecording() {
 function saveRecordingFile() {
   if (recordedChunks.length === 0) return;
   
-  const blob = new Blob(recordedChunks, { type: "audio/webm" });
-  const url = URL.createObjectURL(blob);
+  // Revoke old blob url if exists
+  if (activeRecordingBlobUrl) {
+    URL.revokeObjectURL(activeRecordingBlobUrl);
+  }
   
-  const a = document.createElement("a");
-  a.style.display = "none";
-  a.href = url;
+  const blob = new Blob(recordedChunks, { type: "audio/webm" });
+  activeRecordingBlobUrl = URL.createObjectURL(blob);
   
   const dateStr = new Date().toISOString().slice(0, 19).replace(/:/g, "-");
   const prefix = sessionRole === "sender" ? "outgoing" : "incoming";
-  a.download = `airbridge_record_${prefix}_${dateStr}.webm`;
+  activeRecordingFileName = `airbridge_record_${prefix}_${dateStr}.webm`;
   
-  document.body.appendChild(a);
-  a.click();
+  // Calculate final elapsed time and size
+  let durationStr = "00:00";
+  if (recordingStartTime) {
+    const elapsed = Date.now() - recordingStartTime;
+    const minutes = Math.floor(elapsed / 60000).toString().padStart(2, "0");
+    const seconds = Math.floor((elapsed % 60000) / 1000).toString().padStart(2, "0");
+    durationStr = `${minutes}:${seconds}`;
+  }
   
-  setTimeout(() => {
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, 100);
+  const sizeKb = (blob.size / 1024).toFixed(1);
+  const sizeDisplay = sizeKb > 1024 ? `${(sizeKb / 1024).toFixed(2)} MB` : `${sizeKb} KB`;
   
-  showToast("Audio recording downloaded!", "success");
+  elements.recordingModalInfo.textContent = `Duration: ${durationStr} | Size: ${sizeDisplay}`;
+  elements.recordingModal.classList.remove("hidden");
+  
+  showToast("Audio recording completed!", "success");
 }
 
 function startRecordingTimer() {

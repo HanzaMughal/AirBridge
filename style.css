@@ -968,3 +968,85 @@ footer {
   background-clip: text;
   -webkit-text-fill-color: transparent;
 }
+
+/* Responsive adjustments for mobile screens */
+@media (max-width: 768px) {
+  body {
+    padding: 1rem 0.5rem;
+  }
+
+  .app-container {
+    padding: 1.2rem;
+    border-radius: 16px;
+    gap: 1.5rem;
+    min-height: auto;
+  }
+
+  header {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: center;
+    text-align: center;
+    padding-bottom: 1.2rem;
+  }
+
+  .logo-section h1 {
+    font-size: 1.8rem;
+  }
+
+  .status-widget {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .card-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .glass-card {
+    padding: 1.2rem;
+  }
+
+  .device-list {
+    max-height: 220px;
+  }
+
+  .session-timer {
+    font-size: 1rem;
+  }
+
+  .vu-meter-container {
+    padding: 1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .logo-section h1 {
+    font-size: 1.5rem;
+  }
+
+  .logo-section p {
+    font-size: 0.75rem;
+  }
+
+  .btn {
+    padding: 0.6rem 1.2rem;
+    font-size: 0.85rem;
+    border-radius: 10px;
+  }
+
+  .session-controls-group {
+    gap: 1rem;
+  }
+
+  .btn-mute, .btn-record {
+    width: 50px;
+    height: 50px;
+  }
+
+  .btn-mute svg, .btn-record svg {
+    width: 20px;
+    height: 20px;
+  }
+}
