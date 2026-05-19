@@ -43,6 +43,13 @@ let connectionTimeoutId = null;
 let sessionStartTime = null;
 let sessionTimerInterval = null;
 
+// Recording & WebRTC stability states
+let iceCandidatesQueue = [];
+let mediaRecorder = null;
+let recordedChunks = [];
+let recordingStartTime = null;
+let recordingTimerInterval = null;
+
 // Audio Visualization
 let audioCtx = null;
 let analyser = null;
@@ -122,7 +129,14 @@ const elements = {
   modalTitle: document.getElementById("modal-title"),
   modalMessage: document.getElementById("modal-message"),
   btnModalAccept: document.getElementById("btn-modal-accept"),
-  btnModalReject: document.getElementById("btn-modal-reject")
+  btnModalReject: document.getElementById("btn-modal-reject"),
+  
+  // Recording controls
+  btnRecord: document.getElementById("btn-session-record"),
+  iconRecordActive: document.getElementById("icon-record-active"),
+  iconRecordInactive: document.getElementById("icon-record-inactive"),
+  recordingBadge: document.getElementById("recording-badge"),
+  recordingTimer: document.getElementById("recording-timer")
 };
 
 // --- INITIALIZATION ---
@@ -591,6 +605,7 @@ function initUIEvents() {
   
   // Active session controls
   elements.btnSessionMute.addEventListener("click", toggleMute);
+  elements.btnRecord.addEventListener("click", toggleRecording);
   elements.btnSessionDisconnect.addEventListener("click", () => {
     closeSession(true);
   });
@@ -845,6 +860,7 @@ async function initializeP2PSession() {
   closeSession(false);
   sessionRole = savedRole;
   sessionRoleDetail = savedRoleDetail;
+  iceCandidatesQueue = [];
   
   updateStatus("connecting", "Initializing Peer Connection...");
   
@@ -937,7 +953,11 @@ async function initializeP2PSession() {
       // Receiver: Prepare to receive audio track
       peerConnection.ontrack = (event) => {
         console.log("Received remote audio track");
-        remoteStream = event.streams[0];
+        if (event.streams && event.streams[0]) {
+          remoteStream = event.streams[0];
+        } else {
+          remoteStream = new MediaStream([event.track]);
+        }
         
         playStream(remoteStream);
         setupVUMeter(remoteStream);
@@ -997,6 +1017,19 @@ async function getSystemAudioStream() {
   return captureStream;
 }
 
+// Drain queued ICE candidates once remote SDP description is set
+async function drainIceCandidatesQueue() {
+  console.log(`Draining ${iceCandidatesQueue.length} queued ICE candidates`);
+  while (iceCandidatesQueue.length > 0) {
+    const candidate = iceCandidatesQueue.shift();
+    try {
+      await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    } catch (e) {
+      console.warn("Failed to add queued ICE candidate:", e);
+    }
+  }
+}
+
 // Handle inbound SDP Offer (called on Receiver)
 async function handleSdpOffer(payload) {
   if (!peerConnection) return;
@@ -1006,6 +1039,8 @@ async function handleSdpOffer(payload) {
       type: "offer",
       sdp: payload.sdp
     }));
+    
+    await drainIceCandidatesQueue();
     
     const answer = await peerConnection.createAnswer();
     await peerConnection.setLocalDescription(answer);
@@ -1029,6 +1064,8 @@ async function handleSdpAnswer(payload) {
       type: "answer",
       sdp: payload.sdp
     }));
+    
+    await drainIceCandidatesQueue();
   } catch (err) {
     console.error("Error setting remote SDP answer", err);
     showToast("Signaling handshake failed.", "error");
@@ -1039,10 +1076,14 @@ async function handleSdpAnswer(payload) {
 async function handleIceCandidate(payload) {
   if (!peerConnection) return;
   
-  try {
-    await peerConnection.addIceCandidate(new RTCIceCandidate(payload.candidate));
-  } catch (e) {
-    console.warn("Failed to add ICE candidate:", e);
+  if (peerConnection.remoteDescription && peerConnection.remoteDescription.type) {
+    try {
+      await peerConnection.addIceCandidate(new RTCIceCandidate(payload.candidate));
+    } catch (e) {
+      console.warn("Failed to add ICE candidate:", e);
+    }
+  } else {
+    iceCandidatesQueue.push(payload.candidate);
   }
 }
 
@@ -1068,6 +1109,9 @@ function playStream(stream) {
     // Unlock on body click gesture
     const unlock = () => {
       audio.play();
+      if (audioCtx && audioCtx.state === "suspended") {
+        audioCtx.resume();
+      }
       document.removeEventListener("click", unlock);
     };
     document.addEventListener("click", unlock);
@@ -1119,6 +1163,9 @@ function updateMuteButtonUI(isMuted) {
 function closeSession(notifyRemote = true) {
   console.log("Closing active audio session");
   
+  // Stop recording if active
+  stopRecording();
+  
   // Stop session timers
   stopSessionTimer();
   
@@ -1157,6 +1204,126 @@ function handleDisconnectMessage() {
   closeSession(false);
 }
 
+// --- AUDIO RECORDING ENGINE ---
+
+function toggleRecording() {
+  if (mediaRecorder && mediaRecorder.state === "recording") {
+    stopRecording();
+  } else {
+    startRecording();
+  }
+}
+
+function startRecording() {
+  const streamToRecord = sessionRole === "sender" ? localStream : remoteStream;
+  if (!streamToRecord) {
+    showToast("No active audio stream found to record.", "error");
+    return;
+  }
+  
+  recordedChunks = [];
+  
+  // Choose standard mime type supported by browser
+  let options = { mimeType: "audio/webm;codecs=opus" };
+  if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+    options = { mimeType: "audio/webm" };
+  }
+  if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+    options = { mimeType: "audio/ogg;codecs=opus" };
+  }
+  if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+    options = { mimeType: "" }; // default fallback
+  }
+
+  try {
+    mediaRecorder = new MediaRecorder(streamToRecord, options);
+    
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data && event.data.size > 0) {
+        recordedChunks.push(event.data);
+      }
+    };
+    
+    mediaRecorder.onstop = () => {
+      stopRecordingTimer();
+      saveRecordingFile();
+    };
+    
+    mediaRecorder.start(1000); // chunk every 1 second
+    
+    // UI updates
+    elements.btnRecord.classList.add("recording-active");
+    elements.iconRecordActive.classList.remove("hidden");
+    elements.iconRecordInactive.classList.add("hidden");
+    elements.recordingBadge.classList.remove("hidden");
+    
+    // Start recording timer
+    startRecordingTimer();
+    showToast("Session recording started", "success");
+  } catch (err) {
+    console.error("Failed to start MediaRecorder:", err);
+    showToast("Audio recording not supported or failed to start.", "error");
+  }
+}
+
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state !== "inactive") {
+    mediaRecorder.stop();
+  }
+  
+  // UI updates
+  elements.btnRecord.classList.remove("recording-active");
+  elements.iconRecordActive.classList.add("hidden");
+  elements.iconRecordInactive.classList.remove("hidden");
+  elements.recordingBadge.classList.add("hidden");
+  mediaRecorder = null;
+}
+
+function saveRecordingFile() {
+  if (recordedChunks.length === 0) return;
+  
+  const blob = new Blob(recordedChunks, { type: "audio/webm" });
+  const url = URL.createObjectURL(blob);
+  
+  const a = document.createElement("a");
+  a.style.display = "none";
+  a.href = url;
+  
+  const dateStr = new Date().toISOString().slice(0, 19).replace(/:/g, "-");
+  const prefix = sessionRole === "sender" ? "outgoing" : "incoming";
+  a.download = `airbridge_record_${prefix}_${dateStr}.webm`;
+  
+  document.body.appendChild(a);
+  a.click();
+  
+  setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 100);
+  
+  showToast("Audio recording downloaded!", "success");
+}
+
+function startRecordingTimer() {
+  recordingStartTime = Date.now();
+  elements.recordingTimer.textContent = "00:00";
+  
+  if (recordingTimerInterval) clearInterval(recordingTimerInterval);
+  recordingTimerInterval = setInterval(() => {
+    const elapsed = Date.now() - recordingStartTime;
+    const minutes = Math.floor(elapsed / 60000).toString().padStart(2, "0");
+    const seconds = Math.floor((elapsed % 60000) / 1000).toString().padStart(2, "0");
+    elements.recordingTimer.textContent = `${minutes}:${seconds}`;
+  }, 1000);
+}
+
+function stopRecordingTimer() {
+  if (recordingTimerInterval) {
+    clearInterval(recordingTimerInterval);
+    recordingTimerInterval = null;
+  }
+}
+
 // --- VU METER AUDIO ANALYSER ---
 
 function setupVUMeter(stream) {
@@ -1164,6 +1331,20 @@ function setupVUMeter(stream) {
     stopVUMeter();
     
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    // Explicitly handle suspended state (autoplay security policy on modern browsers)
+    if (audioCtx.state === "suspended") {
+      audioCtx.resume();
+      
+      const resumeContext = () => {
+        if (audioCtx && audioCtx.state === "suspended") {
+          audioCtx.resume();
+        }
+        document.removeEventListener("click", resumeContext);
+      };
+      document.addEventListener("click", resumeContext);
+    }
+    
     analyser = audioCtx.createAnalyser();
     
     const source = audioCtx.createMediaStreamSource(stream);
