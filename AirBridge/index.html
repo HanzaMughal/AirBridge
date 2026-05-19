@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AirBridge — Cross-Device Audio Routing</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- MQTT.js Library for secure WebSocket signaling & discovery -->
+  <script src="https://unpkg.com/mqtt@4.3.7/dist/mqtt.min.js"></script>
+</head>
+<body>
+
+  <div class="app-container">
+    <!-- Header -->
+    <header>
+      <div class="logo-section">
+        <h1>AirBridge</h1>
+        <p>Real-time Audio Routing</p>
+      </div>
+      <div class="status-widget">
+        <div id="status-dot" class="status-dot idle"></div>
+        <span id="status-text">DISCONNECTED</span>
+      </div>
+    </header>
+
+    <!-- Main Navigation / Views -->
+
+    <!-- VIEW 1: DISCOVERY & PAIRING -->
+    <main id="view-discovery" class="view-panel active">
+      <!-- Device Name Summary Banner -->
+      <div class="glass-card" style="flex-direction: row; justify-content: space-between; align-items: center; padding: 1rem 1.5rem;">
+        <div>
+          <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Your Device Name</span>
+          <h3 id="current-device-name-display" style="font-family: var(--font-heading); font-size: 1.15rem; font-weight: 600; color: var(--accent-cyan);">Detecting...</h3>
+        </div>
+        <button id="btn-open-settings" class="btn btn-icon-only" aria-label="Settings">
+          <!-- Gear SVG Icon -->
+          <svg viewBox="0 0 24 24"><path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/></svg>
+        </button>
+      </div>
+
+      <div class="card-grid">
+        <!-- LAN Discovery Section -->
+        <div class="glass-card">
+          <div class="section-title">
+            <!-- Wi-Fi SVG Icon -->
+            <svg viewBox="0 0 24 24"><path d="M12 21l-1.45-1.45C5.38 14.38 2 11.23 2 7.5 2 4.42 4.42 2 7.5 2c1.74 0 3.41.81 4.5 2.09C13.09 2.81 14.76 2 16.5 2 19.58 2 22 4.42 22 7.5c0 3.73-3.38 6.88-8.55 12.05L12 21z" style="display:none;"/><path d="M12 3c-4.97 0-9 4.03-9 9 0 2.12.74 4.07 1.97 5.61L4.35 19.4c-1.46-1.92-2.35-4.3-2.35-6.9 0-6.63 5.37-12 12-12s12 5.37 12 12c0 2.6-0.89 4.98-2.35 6.9l-1.62-1.79C20.26 16.07 21 14.12 21 12c0-4.97-4.03-9-9-9zm0 4c-2.76 0-5 2.24-5 5 0 1.25.46 2.39 1.21 3.29l-1.54 1.7C5.6 15.68 5 13.91 5 12c0-3.87 3.13-7 7-7s7 3.13 7 7c0 1.91-0.6 3.68-1.67 4.99l-1.54-1.7C16.54 14.39 17 13.25 17 12c0-2.76-2.24-5-5-5zm0 4c-0.55 0-1 0.45-1 1s0.45 1 1 1 1-0.45 1-1-0.45-1-1-1z"/></svg>
+            Local Network (Wi-Fi)
+          </div>
+          <p style="font-size: 0.85rem; color: var(--text-secondary);">Devices on the same local network will appear below automatically for instant pairing.</p>
+          
+          <div id="device-list" class="device-list">
+            <!-- Devices rendered here via JS -->
+            <div class="empty-state">
+              <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+              <span>Searching for devices...</span>
+              <span style="font-size: 0.75rem; color: var(--text-muted);">Ensure other devices have AirBridge open</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- WAN Pairing Section -->
+        <div class="glass-card">
+          <div class="section-title">
+            <!-- Globe/Network SVG Icon -->
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+            Remote Network (WAN)
+          </div>
+          
+          <!-- State A: Generate Code -->
+          <div id="wan-generate-container" style="display: flex; flex-direction: column; gap: 0.8rem;">
+            <p style="font-size: 0.85rem; color: var(--text-secondary);">Generate a room pairing code to connect devices across different networks (e.g. mobile data).</p>
+            <button id="btn-create-room" class="btn btn-primary">
+              Create Room Code
+            </button>
+            <div id="room-code-display-wrapper" class="hidden">
+              <span style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 0.3rem;">Share this code with the other device:</span>
+              <div class="code-display-box">
+                <span id="room-code-text">------</span>
+                <button id="btn-copy-code" class="btn btn-icon-only" style="background:transparent; border:none;" aria-label="Copy Code">
+                  <!-- Copy Icon -->
+                  <svg viewBox="0 0 24 24" style="fill: var(--accent-cyan); width: 20px; height: 20px;"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+                </button>
+              </div>
+              <span style="font-size: 0.75rem; color: var(--text-muted); text-align: center; display: block; margin-top: 0.4rem;">Expires in 10 minutes</span>
+            </div>
+          </div>
+
+          <div style="border-top: 1px solid var(--border-glass); margin: 0.5rem 0;"></div>
+
+          <!-- State B: Enter Code -->
+          <div style="display: flex; flex-direction: column; gap: 0.8rem;">
+            <p style="font-size: 0.85rem; color: var(--text-secondary);">Or enter a pairing code generated by the other device:</p>
+            <div class="code-input-group">
+              <input id="input-room-code" type="text" maxlength="6" placeholder="K8R3PZ" class="code-input" aria-label="Room Code input">
+              <button id="btn-join-room" class="btn btn-primary" style="padding: 0 1.5rem;">
+                Join
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- VIEW 2: ROLE SELECTION -->
+    <main id="view-role-selection" class="view-panel">
+      <div class="glass-card" style="align-items: center; text-align: center; gap: 0.5rem;">
+        <span style="font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Establish Connection with</span>
+        <h2 id="target-device-name-display" style="font-family: var(--font-heading); color: var(--accent-cyan);">Remote Device</h2>
+        <p style="font-size: 0.9rem; color: var(--text-secondary); max-width: 500px; margin-top: 0.5rem;">Select this device's role. The target device will automatically configure itself to the opposite matching role.</p>
+      </div>
+
+      <div class="role-cards-container">
+        <!-- Role A: Microphone Source (Sends local audio to remote) -->
+        <div id="role-mic" class="role-card">
+          <div class="role-icon-box">
+            <!-- Mic SVG -->
+            <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/></svg>
+          </div>
+          <h3>Microphone Source</h3>
+          <p>Stream this device's microphone audio in real-time to the other device. Perfect for using a phone as a wireless PC mic.</p>
+        </div>
+
+        <!-- Role B: Speaker Output (Receives and plays remote audio) -->
+        <div id="role-speaker" class="role-card">
+          <div class="role-icon-box">
+            <!-- Speaker SVG -->
+            <svg viewBox="0 0 24 24"><path d="M20 2H8c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8 2h3v3h-3V4zm0 5h3v3h-3V9zm0 5h3v3h-3v-3zm6 6h-3v-3h3v3zm0-5h-3v-3h3v3zm0-5h-3V9h3v3zm0-5h-3V4h3v3zM4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6z"/></svg>
+          </div>
+          <h3>Speaker Output</h3>
+          <p>Receive live audio from the other device and play it through this device's speaker. Ideal for PC system audio monitoring.</p>
+          <div id="ios-unsupported-tag" class="role-unsupported-tag hidden">Unsupported on iOS</div>
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:center; margin-top: 1rem;">
+        <button id="btn-cancel-role" class="btn">
+          <!-- Back arrow SVG -->
+          <svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+          Cancel and Return
+        </button>
+      </div>
+    </main>
+
+    <!-- VIEW 3: ACTIVE SESSION -->
+    <main id="view-session" class="view-panel">
+      <div class="glass-card session-panel-layout">
+        
+        <div class="session-main-status">
+          <span style="font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Active Session</span>
+          <h2 id="session-partner-name" style="font-family: var(--font-heading); color: var(--text-primary);">Connected with Device</h2>
+          <div class="session-timer" id="session-timer">00:00</div>
+          
+          <div style="display:flex; gap: 0.6rem; align-items:center; margin-top: 0.5rem;">
+            <span style="font-size: 0.85rem; color: var(--text-secondary);">Mode:</span>
+            <span id="session-mode-badge" style="background: rgba(0, 240, 255, 0.1); color: var(--accent-cyan); border: 1px solid rgba(0, 240, 255, 0.2); font-size: 0.75rem; padding: 0.25rem 0.6rem; border-radius: 6px; font-weight: 700; text-transform: uppercase;">Streaming</span>
+          </div>
+        </div>
+
+        <!-- VU Meter -->
+        <div class="vu-meter-container">
+          <div class="vu-meter-label">
+            <span id="vu-meter-direction-label">Audio Level</span>
+            <span id="vu-db-text">Muted</span>
+          </div>
+          <canvas id="vu-canvas" class="vu-canvas" width="400" height="50"></canvas>
+          <span style="font-size: 0.75rem; color: var(--text-muted); text-align: center;">Speaks when active. High latency? Reconnect on the same local Wi-Fi.</span>
+        </div>
+
+        <!-- Controls -->
+        <div class="session-controls-group">
+          <!-- Audio Playback Volume (only visible if Speaker role) -->
+          <div id="volume-panel" class="volume-control-panel hidden">
+            <!-- Speaker Wave SVG -->
+            <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+            <input type="range" min="0" max="1" step="0.05" value="1" id="session-volume" class="volume-slider" aria-label="Volume Slider">
+          </div>
+
+          <!-- Mute Toggle -->
+          <button id="btn-session-mute" class="btn-mute" aria-label="Mute/Unmute">
+            <!-- Mic Icon -->
+            <svg viewBox="0 0 24 24" id="icon-mute-unmuted"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/></svg>
+            <!-- Mic Mute Icon (hidden by default) -->
+            <svg viewBox="0 0 24 24" id="icon-mute-muted" class="hidden"><path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-2.73 3.27L12 9.54V5c0-.55-.45-1-1-1s-1 .45-1 1v.09l4.75 4.75.25-.34c.55-.49.9-1.2.9-2v-3c0-1.66-1.34-3-3-3S9 3.34 9 5v1.27l1.73 1.73c.04-.32.07-.65.07-.98 0-1.66 1.34-3 3-3s3 1.34 3 3v3c0 .34-.03.66-.07.98l1.43 1.43c.12-.47.19-.97.19-1.49H17v3c0 .24-.03.47-.07.7l1.43 1.43c.27-.62.43-1.31.43-2.05h1.7c0 1.19-.34 2.3-.9 3.28l-1.23-1.23zM2 5.27l2.75 2.75C3.39 9.17 2.54 10.5 2.54 12H4.2c0-1.1.44-2.1 1.17-2.83l1.17 1.17C5.9 10.74 5.5 11.34 5.5 12h1.7c0-.24.03-.47.07-.7l1.18 1.18C8.16 13.07 8 13.52 8 14H6.3c0 3.41 2.72 6.23 6 6.72V24h2v-3.28c1.19-.17 2.3-.61 3.28-1.23l2.45 2.45 1.41-1.41L3.41 3.86 2 5.27zm10 9.82v1.96c-.45-.07-.88-.2-1.29-.39l1.45-1.45c.42.06.84.09 1.29.09h1.7v-1h-1.7c-.55 0-1-.45-1-1v-2c0-.55.45-1 1-1h1.7V9h-1.7c-1.66 0-3 1.34-3 3v3c0 .52.14 1 .38 1.42l1.45-1.45c-.24-.26-.38-.59-.38-.97v-3c0-.55.45-1 1-1h1.7v1H11v2c0 .55.45 1 1 1h1l-1 1H11v1.96c-.45-.07-.88-.2-1.29-.39l1.45-1.45z"/></svg>
+          </button>
+        </div>
+
+        <button id="btn-session-disconnect" class="btn btn-danger" style="width: 100%; max-width: 250px; margin-top: 1rem;">
+          <!-- Disconnect SVG -->
+          <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+          Disconnect Session
+        </button>
+      </div>
+    </main>
+
+    <!-- VIEW 4: SETTINGS PANEL -->
+    <main id="view-settings" class="view-panel">
+      <div class="glass-card">
+        <div class="section-title">
+          <!-- Gear SVG Icon -->
+          <svg viewBox="0 0 24 24"><path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/></svg>
+          Device & Audio Settings
+        </div>
+
+        <div class="settings-list">
+          <!-- Display Name -->
+          <div class="settings-row">
+            <div>
+              <label for="input-display-name">Device Name</label>
+              <span>The name broadcasted to nearby peers.</span>
+            </div>
+            <input type="text" id="input-display-name" class="form-input" placeholder="My Device">
+          </div>
+
+          <!-- Select Audio Input Device -->
+          <div class="settings-row">
+            <div>
+              <label for="select-audio-input">Microphone Device</label>
+              <span>Choose which microphone to capture from.</span>
+            </div>
+            <select id="select-audio-input" class="form-select">
+              <option value="default">Default System Mic</option>
+            </select>
+          </div>
+
+          <!-- Noise Suppression Switch -->
+          <div class="settings-row">
+            <div>
+              <label for="checkbox-noise-suppress">Noise Suppression</label>
+              <span>Filter out ambient background noise.</span>
+            </div>
+            <label class="switch-wrapper">
+              <input type="checkbox" id="checkbox-noise-suppress" checked>
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+
+          <!-- Echo Cancellation Switch -->
+          <div class="settings-row">
+            <div>
+              <label for="checkbox-echo-cancel">Echo Cancellation</label>
+              <span>Prevent feedback loops & speaker echo.</span>
+            </div>
+            <label class="switch-wrapper">
+              <input type="checkbox" id="checkbox-echo-cancel" checked>
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+
+          <!-- Auto Gain Control Switch -->
+          <div class="settings-row">
+            <div>
+              <label for="checkbox-gain-control">Auto Gain Control</label>
+              <span>Normalize volume levels automatically.</span>
+            </div>
+            <label class="switch-wrapper">
+              <input type="checkbox" id="checkbox-gain-control" checked>
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:center; margin-top: 1rem;">
+        <button id="btn-save-settings" class="btn btn-primary" style="width: 100%; max-width: 250px;">
+          <!-- Save Checkmark SVG -->
+          <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+          Save & Apply Settings
+        </button>
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer>
+      <span>AirBridge P2P connection runs directly between browsers.</span>
+      <span>No audio data is sent to external servers.</span>
+    </footer>
+  </div>
+
+  <!-- Custom Glassmorphic Modal for Incoming Connection Requests -->
+  <div id="connection-modal" class="modal-overlay hidden">
+    <div class="modal-box glass-card">
+      <div class="modal-header">
+        <h3 id="modal-title">Incoming Connection</h3>
+      </div>
+      <div class="modal-body">
+        <p id="modal-message">Device X wants to connect to you.</p>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-modal-reject" class="btn btn-danger">Decline</button>
+        <button id="btn-modal-accept" class="btn btn-primary">Accept & Connect</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Area -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- Main JavaScript Logic -->
+  <script src="app.js"></script>
+</body>
+</html>
