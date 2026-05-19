@@ -51,6 +51,7 @@ let recordingStartTime = null;
 let recordingTimerInterval = null;
 let activeRecordingBlobUrl = null;
 let activeRecordingFileName = "";
+let recordingDestinationStream = null;
 
 // Audio Visualization
 let audioCtx = null;
@@ -1127,9 +1128,18 @@ function playStream(stream) {
   // Clean up previous elements first
   cleanupAudioElements();
   
-  const audio = document.createElement("audio");
+  // Use a video element (visually hidden but present in DOM) to bypass iOS Safari/Chrome WebRTC audio playback bugs
+  const audio = document.createElement("video");
+  audio.style.position = "absolute";
+  audio.style.width = "1px";
+  audio.style.height = "1px";
+  audio.style.opacity = "0.01";
+  audio.style.pointerEvents = "none";
+  
   audio.srcObject = stream;
   audio.autoplay = true;
+  audio.setAttribute("playsinline", "true");
+  audio.setAttribute("webkit-playsinline", "true");
   audio.playsInline = true;
   audio.volume = parseFloat(elements.sessionVolume.value);
   
@@ -1250,7 +1260,13 @@ function toggleRecording() {
 }
 
 function startRecording() {
-  const streamToRecord = sessionRole === "sender" ? localStream : remoteStream;
+  let streamToRecord = null;
+  if (sessionRole === "sender") {
+    streamToRecord = localStream;
+  } else {
+    streamToRecord = recordingDestinationStream ? recordingDestinationStream.stream : remoteStream;
+  }
+  
   if (!streamToRecord) {
     showToast("No active audio stream found to record.", "error");
     return;
@@ -1393,6 +1409,14 @@ function setupVUMeter(stream) {
     const source = audioCtx.createMediaStreamSource(stream);
     source.connect(analyser);
     
+    // Create destination node for high-compatibility recording
+    try {
+      recordingDestinationStream = audioCtx.createMediaStreamDestination();
+      source.connect(recordingDestinationStream);
+    } catch (e) {
+      console.warn("Failed to create MediaStreamAudioDestinationNode", e);
+    }
+    
     analyser.fftSize = 256;
     const bufferLength = analyser.frequencyBinCount;
     dataArray = new Uint8Array(bufferLength);
@@ -1480,6 +1504,7 @@ function stopVUMeter() {
   
   analyser = null;
   dataArray = null;
+  recordingDestinationStream = null;
   
   // Clear canvas
   const canvas = elements.vuCanvas;
